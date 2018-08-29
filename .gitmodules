@@ -1,4 +1,0 @@
-[submodule "tools/clang"]
-	path = tools/clang
-	url = git@github.com:deadly-platypus/clang.git
-	branch = fosbin-flop
