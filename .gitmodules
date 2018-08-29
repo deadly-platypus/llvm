@@ -2,3 +2,7 @@
 	path = tools/clang
 	url = git@github.com:deadly-platypus/clang.git
 	branch = fosbin-flop
+[submodule "projects/compiler-rt"]
+	path = projects/compiler-rt
+	url = git@github.com:deadly-platypus/compiler-rt.git
+	branch = fosbin-flop
