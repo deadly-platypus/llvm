@@ -58,6 +58,7 @@ add_llvm_library(LLVMCodeGen
   LiveVariables.cpp
   LLVMTargetMachine.cpp
   LocalStackSlotAllocation.cpp
+  LofScribe.cpp
   LoopTraversal.cpp
   LowLevelType.cpp
   LowerEmuTLS.cpp
