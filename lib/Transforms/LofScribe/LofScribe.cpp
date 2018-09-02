@@ -93,6 +93,9 @@ bool LofScribePass::runOnFunction(Function &F) {
 
             IRB.CreateCall(record_arg, args);
         }
+        BasicBlock::iterator bbit(ci);
+        bbit++;
+        IRB.SetInsertPoint(&*bbit);
 
         Value* args[2];
         args[0] = CreateBitCast(ci, IRB);
