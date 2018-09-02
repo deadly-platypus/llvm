@@ -18,23 +18,31 @@ using namespace llvm;
 
 #define DEBUG_TYPE "lofscribe"
 
-LofScribePass::LofScribePass() : FunctionPass(ID) {
+LofScribePass::LofScribePass() : FunctionPass(ID) {}
+
+Value* LofScribePass::CreateBitCast(Value* orig, IRBuilder<> &IRB) {
+    Value* result;
+    if(isa<BitCastInst>(orig)) {
+        result = orig;
+    } else if(orig->getType()->isPointerTy()) {
+        result = IRB.CreateBitCast(orig, IRB.getInt8PtrTy());
+    } else {
+        result = IRB.CreateIntToPtr(orig, IRB.getInt8PtrTy());
+    }
+
+    return result;
 }
 
 bool LofScribePass::runOnFunction(Function &F) {
-    std::cout << "Leap of Faith Scribe starting..." << std::endl;
     LLVM_DEBUG(dbgs() << "Leap of Faith Scribe starting...\n");
     std::set<CallInst*> callset;
     
-    std::cout << "Finding call instructions...";
     for(inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         I->dump();
         if(CallInst* ci = dyn_cast<CallInst>(&*I)) {
-            std::cout << "Found call" << std::endl;
             callset.insert(ci);
         }
     }
-    std::cout << "done" << std::endl;
 
     LLVM_DEBUG(dbgs() << "Found "
             << callset.size()
@@ -42,18 +50,31 @@ bool LofScribePass::runOnFunction(Function &F) {
             << F.getName()
             << "\n");
 
+    Type *voidTy = Type::getVoidTy(F.getContext());
+    Type *boolTy = Type::getInt1Ty(F.getContext());
+    Type *charTy = Type::getInt8Ty(F.getContext());
+    Type *voidStarTy = Type::getInt8PtrTy(F.getContext());
+
+    /* lof_precall provides the number of arguments to a called function,
+     * and is followed up by zero or more lof_record_arg calls */
     Function* precall = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_precall", Type::getVoidTy(F.getContext())));
+            F.getParent()->getOrInsertFunction("lof_precall", voidTy, charTy ));
+
+    /* lof_record_arg provides a single function call argument to the runtime 
+     * component.  It converts everything to a 64-bit integer, and indicates 
+     * if the argument is a pointer or not */
     Function* record_arg = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_record_arg", Type::getVoidTy(F.getContext())));
+            F.getParent()->getOrInsertFunction("lof_record_arg", voidTy, voidStarTy, boolTy ));
+   
+    /* lof_postcall records the return value of the function call, records if the return value
+     * is a pointer, and then records all changes to pointers */
     Function* postcall = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_postcall", Type::getVoidTy(F.getContext())));
+            F.getParent()->getOrInsertFunction("lof_postcall", voidTy, voidStarTy, boolTy ));
 
     assert(precall != nullptr);
     assert(record_arg != nullptr);
     assert(postcall != nullptr);
 
-    std::cout << "Instrumenting callsites...";
     for(std::set<CallInst*>::iterator it = callset.begin(); it != callset.end(); ++it) {
         CallInst* ci = *it;
         IRBuilder<> IRB(ci);
@@ -67,25 +88,24 @@ bool LofScribePass::runOnFunction(Function &F) {
 
         for(Value* arg : ci->arg_operands()) {
             Value* args[2];
-            args[0] = arg;
+            args[0] = CreateBitCast(arg, IRB);
             args[1] = IRB.getInt1(arg->getType()->isPointerTy());
 
-            IRB.CreateCall(precall, args);
+            IRB.CreateCall(record_arg, args);
         }
 
-        IRB.CreateCall(postcall, { ci });
+        Value* args[2];
+        args[0] = CreateBitCast(ci, IRB);
+        args[1] = IRB.getInt1(ci->getType()->isPointerTy());
+        IRB.CreateCall(postcall, args);
     }
+    F.dump();
 
-    std::cout << "done" << std::endl;
     return true;
 }
 
 char LofScribePass::ID = 0;
 
-/*INITIALIZE_PASS_BEGIN(LofScribePass, "lofscribe", "gets function return values and input arguments", false, false);
-INITIALIZE_PASS_END(LofScribePass, "lofscribe", "gets function return values and input arguments", false, false);
-
-FunctionPass *llvm::createLofScribePass() { return new LofScribePass(); }*/
-static RegisterPass<LofScribePass> X("lofscribe", "Hello World Pass",
+static RegisterPass<LofScribePass> X("lofscribe", "Leap of Faith Scribe Pass",
                              false ,
                              false );

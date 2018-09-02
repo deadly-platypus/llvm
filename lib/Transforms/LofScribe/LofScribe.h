@@ -7,6 +7,7 @@
 
 #include "llvm/Pass.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/CodeGen/Passes.h"
 
@@ -16,6 +17,8 @@ public:
     LofScribePass();
 
     bool runOnFunction(llvm::Function &F) override;
+protected:
+    llvm::Value* CreateBitCast(llvm::Value* orig, llvm::IRBuilder<> &IRB);
 };
 
 
