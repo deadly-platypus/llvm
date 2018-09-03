@@ -9,6 +9,9 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/PassRegistry.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include <set>
 #include <cassert>
@@ -110,3 +113,12 @@ char LofScribePass::ID = 0;
 static RegisterPass<LofScribePass> X("lofscribe", "Leap of Faith Scribe Pass",
                              false ,
                              false );
+
+static void registerMyPass(const PassManagerBuilder &,
+                           legacy::PassManagerBase &PM) {
+    PM.add(new LofScribePass());
+}
+static RegisterStandardPasses
+    RegisterMyPass(PassManagerBuilder::EP_EarlyAsPossible,
+                   registerMyPass);
+
