@@ -34,11 +34,11 @@ Value* LofScribePass::CreateBitCast(Value* orig, IRBuilder<> &IRB) {
 }
 
 bool LofScribePass::runOnFunction(Function &F) {
-    LLVM_DEBUG(dbgs() << "Leap of Faith Scribe starting...\n");
+    LLVM_DEBUG(dbgs() << "Leap of Faith Scribe starting for "
+            << F.getName() << "\n");
     std::set<CallInst*> callset;
     
     for(inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
-        I->dump();
         if(CallInst* ci = dyn_cast<CallInst>(&*I)) {
             callset.insert(ci);
         }
@@ -79,7 +79,6 @@ bool LofScribePass::runOnFunction(Function &F) {
         CallInst* ci = *it;
         IRBuilder<> IRB(ci);
 
-        ci->dump();
         LLVM_DEBUG(dbgs() << "Found call to "
                 << ci->getCalledFunction()->getName()
                 << "\n");
@@ -102,7 +101,6 @@ bool LofScribePass::runOnFunction(Function &F) {
         args[1] = IRB.getInt1(ci->getType()->isPointerTy());
         IRB.CreateCall(postcall, args);
     }
-    F.dump();
 
     return true;
 }
