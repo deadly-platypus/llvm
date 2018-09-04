@@ -54,25 +54,24 @@ bool LofScribePass::runOnFunction(Function &F) {
             << "\n");
 
     Type *voidTy = Type::getVoidTy(F.getContext());
-    Type *boolTy = Type::getInt1Ty(F.getContext());
-    Type *charTy = Type::getInt8Ty(F.getContext());
+    Type *intTy = Type::getInt32Ty(F.getContext());
     Type *voidStarTy = Type::getInt8PtrTy(F.getContext());
 
     /* lof_precall provides the number of arguments to a called function,
      * and is followed up by zero or more lof_record_arg calls */
     Function* precall = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_precall", voidTy, charTy ));
+            F.getParent()->getOrInsertFunction("lof_precall", voidTy, voidStarTy ));
 
     /* lof_record_arg provides a single function call argument to the runtime 
      * component.  It converts everything to a 64-bit integer, and indicates 
      * if the argument is a pointer or not */
     Function* record_arg = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_record_arg", voidTy, voidStarTy, boolTy ));
+            F.getParent()->getOrInsertFunction("lof_record_arg", voidTy, voidStarTy, intTy ));
    
     /* lof_postcall records the return value of the function call, records if the return value
      * is a pointer, and then records all changes to pointers */
     Function* postcall = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_postcall", voidTy, voidStarTy, boolTy ));
+            F.getParent()->getOrInsertFunction("lof_postcall", voidTy, voidStarTy, intTy ));
 
     assert(precall != nullptr);
     assert(record_arg != nullptr);
@@ -82,16 +81,20 @@ bool LofScribePass::runOnFunction(Function &F) {
         CallInst* ci = *it;
         IRBuilder<> IRB(ci);
 
-        LLVM_DEBUG(dbgs() << "Found call to "
-                << ci->getCalledFunction()->getName()
-                << "\n");
+        if(ci->getCalledFunction()) {
+            LLVM_DEBUG(dbgs() << "Found call to "
+                              << ci->getCalledFunction()->getName()
+                              << "\n");
+        } else {
+            LLVM_DEBUG(dbgs() << "Found call to indirect function\n");
+        }
 
-        IRB.CreateCall(precall, { IRB.getInt8(ci->getNumArgOperands()) });
+        IRB.CreateCall(precall, { CreateBitCast(ci->getCalledValue(), IRB) });
 
         for(Value* arg : ci->arg_operands()) {
             Value* args[2];
             args[0] = CreateBitCast(arg, IRB);
-            args[1] = IRB.getInt1(arg->getType()->isPointerTy());
+            args[1] = IRB.getInt32(arg->getType()->getTypeID());
 
             IRB.CreateCall(record_arg, args);
         }
@@ -101,7 +104,7 @@ bool LofScribePass::runOnFunction(Function &F) {
 
         Value* args[2];
         args[0] = CreateBitCast(ci, IRB);
-        args[1] = IRB.getInt1(ci->getType()->isPointerTy());
+        args[1] = IRB.getInt32(ci->getType()->getTypeID());
         IRB.CreateCall(postcall, args);
     }
 
@@ -121,4 +124,3 @@ static void registerMyPass(const PassManagerBuilder &,
 static RegisterStandardPasses
     RegisterMyPass(PassManagerBuilder::EP_EarlyAsPossible,
                    registerMyPass);
-
