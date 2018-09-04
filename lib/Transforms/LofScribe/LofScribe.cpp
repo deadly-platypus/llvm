@@ -12,6 +12,7 @@
 #include "llvm/PassRegistry.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
 
 #include <set>
 #include <cassert>
@@ -54,7 +55,8 @@ bool LofScribePass::runOnFunction(Function &F) {
             << "\n");
 
     Type *voidTy = Type::getVoidTy(F.getContext());
-    Type *intTy = Type::getInt32Ty(F.getContext());
+    Type *int32Ty = Type::getInt32Ty(F.getContext());
+    Type *int64Ty = Type::getInt64Ty(F.getContext());
     Type *voidStarTy = Type::getInt8PtrTy(F.getContext());
 
     /* lof_precall provides the number of arguments to a called function,
@@ -66,12 +68,12 @@ bool LofScribePass::runOnFunction(Function &F) {
      * component.  It converts everything to a 64-bit integer, and indicates 
      * if the argument is a pointer or not */
     Function* record_arg = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_record_arg", voidTy, voidStarTy, intTy ));
+            F.getParent()->getOrInsertFunction("lof_record_arg", voidTy, voidStarTy, int32Ty, int64Ty ));
    
     /* lof_postcall records the return value of the function call, records if the return value
      * is a pointer, and then records all changes to pointers */
     Function* postcall = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_postcall", voidTy, voidStarTy, intTy ));
+            F.getParent()->getOrInsertFunction("lof_postcall", voidTy, voidStarTy, int32Ty ));
 
     assert(precall != nullptr);
     assert(record_arg != nullptr);
@@ -92,9 +94,14 @@ bool LofScribePass::runOnFunction(Function &F) {
         IRB.CreateCall(precall, { CreateBitCast(ci->getCalledValue(), IRB) });
 
         for(Value* arg : ci->arg_operands()) {
-            Value* args[2];
+            Value* args[3];
             args[0] = CreateBitCast(arg, IRB);
             args[1] = IRB.getInt32(arg->getType()->getTypeID());
+            if(PointerType *pt = dyn_cast<PointerType>(arg->getType())) {
+                args[2] = IRB.getInt64(pt->getElementType()->getPrimitiveSizeInBits());
+            } else {
+                args[2] = IRB.getInt64(arg->getType()->getPrimitiveSizeInBits());
+            }
 
             IRB.CreateCall(record_arg, args);
         }
