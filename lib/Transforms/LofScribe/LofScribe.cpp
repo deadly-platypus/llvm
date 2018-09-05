@@ -73,7 +73,7 @@ bool LofScribePass::runOnFunction(Function &F) {
     /* lof_postcall records the return value of the function call, records if the return value
      * is a pointer, and then records all changes to pointers */
     Function* postcall = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_postcall", voidTy, voidStarTy, int32Ty ));
+            F.getParent()->getOrInsertFunction("lof_postcall", voidTy, voidStarTy, int32Ty, int64Ty ));
 
     assert(precall != nullptr);
     assert(record_arg != nullptr);
@@ -93,7 +93,9 @@ bool LofScribePass::runOnFunction(Function &F) {
 
         IRB.CreateCall(precall, { CreateBitCast(ci->getCalledValue(), IRB) });
 
-        for(Value* arg : ci->arg_operands()) {
+        /* Reverse order because runtime library uses FIFO stack to store arguments */
+        for(unsigned i = ci->getNumArgOperands(); i > 0; i--) {
+            Value* arg = ci->getArgOperand(i - 1);
             Value* args[3];
             args[0] = CreateBitCast(arg, IRB);
             args[1] = IRB.getInt32(arg->getType()->getTypeID());
@@ -109,9 +111,14 @@ bool LofScribePass::runOnFunction(Function &F) {
         bbit++;
         IRB.SetInsertPoint(&*bbit);
 
-        Value* args[2];
+        Value* args[3];
         args[0] = CreateBitCast(ci, IRB);
         args[1] = IRB.getInt32(ci->getType()->getTypeID());
+        if(PointerType *pt = dyn_cast<PointerType>(ci->getType())) {
+            args[2] = IRB.getInt64(pt->getElementType()->getPrimitiveSizeInBits());
+        } else {
+            args[2] = IRB.getInt64(ci->getType()->getPrimitiveSizeInBits());
+        }
         IRB.CreateCall(postcall, args);
     }
 
