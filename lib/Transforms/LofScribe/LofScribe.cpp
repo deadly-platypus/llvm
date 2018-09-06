@@ -44,6 +44,10 @@ bool LofScribePass::runOnFunction(Function &F) {
     
     for(inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         if(CallInst* ci = dyn_cast<CallInst>(&*I)) {
+            /* We don't want to instrument functions like llvm.dbg.declare */
+            if(ci->getCalledFunction() && ci->getCalledFunction()->isIntrinsic()) {
+                continue;
+            }
             callset.insert(ci);
         }
     }
@@ -112,7 +116,11 @@ bool LofScribePass::runOnFunction(Function &F) {
         IRB.SetInsertPoint(&*bbit);
 
         Value* args[3];
-        args[0] = CreateBitCast(ci, IRB);
+        if(ci->getType()->isVoidTy()) {
+            args[0] = IRB.CreateIntToPtr(IRB.getInt32(0), voidStarTy);
+        } else {
+            args[0] = CreateBitCast(ci, IRB);
+        }
         args[1] = IRB.getInt32(ci->getType()->getTypeID());
         if(PointerType *pt = dyn_cast<PointerType>(ci->getType())) {
             args[2] = IRB.getInt64(pt->getElementType()->getPrimitiveSizeInBits());
