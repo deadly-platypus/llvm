@@ -25,13 +25,29 @@ using namespace llvm;
 LofScribePass::LofScribePass() : FunctionPass(ID) {}
 
 Value* LofScribePass::CreateBitCast(Value* orig, IRBuilder<> &IRB) {
+    llvm::outs() << "*************\n";
+    orig->dump();
+    llvm::outs() << "*************\n";
+
     Value* result;
     if(isa<BitCastInst>(orig)) {
         result = orig;
     } else if(orig->getType()->isPointerTy()) {
         result = IRB.CreateBitCast(orig, IRB.getInt8PtrTy());
-    } else {
+    } else if(orig->getType()->isFloatTy()) {
+        result = IRB.CreateIntToPtr(
+                IRB.CreateFPToUI(orig, IRB.getInt32Ty()),
+                IRB.getInt8PtrTy());
+    } else if(orig->getType()->isIntegerTy()) {
         result = IRB.CreateIntToPtr(orig, IRB.getInt8PtrTy());
+    } else if(orig->getType()->isDoubleTy()) {
+        result = IRB.CreateIntToPtr(
+                IRB.CreateFPToUI(orig, IRB.getInt64Ty()),
+                IRB.getInt8PtrTy());
+    } else {
+        orig->getType()->dump();
+        llvm::outs() << "*************\n";
+        result = IRB.CreatePointerCast(orig, IRB.getInt8PtrTy());
     }
 
     return result;
@@ -41,6 +57,8 @@ bool LofScribePass::runOnFunction(Function &F) {
     LLVM_DEBUG(dbgs() << "Leap of Faith Scribe starting for "
             << F.getName() << "\n");
     std::set<CallInst*> callset;
+    
+    F.dump();
     
     for(inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         if(CallInst* ci = dyn_cast<CallInst>(&*I)) {
