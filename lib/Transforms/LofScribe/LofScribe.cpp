@@ -111,6 +111,11 @@ bool LofScribePass::runOnFunction(Function &F) {
     Type *int32Ty = Type::getInt32Ty(F.getContext());
     Type *int64Ty = Type::getInt64Ty(F.getContext());
     Type *voidStarTy = Type::getInt8PtrTy(F.getContext());
+    Type *doubleTy = Type::getDoubleTy(F.getContext());
+
+    /* Variadic function for handling different data types */
+    FunctionType *record_post_ty = FunctionType::get(voidTy, { int32Ty, int64Ty, voidStarTy }, false);
+    FunctionType *double_record_ty = FunctionType::get(voidTy, {int32Ty, int64Ty, doubleTy}, false);
 
     /* lof_precall provides the number of arguments to a called function,
      * and is followed up by zero or more lof_record_arg calls */
@@ -121,12 +126,20 @@ bool LofScribePass::runOnFunction(Function &F) {
      * component.  It converts everything to a 64-bit integer, and indicates 
      * if the argument is a pointer or not */
     Function* record_arg = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_record_arg", voidTy, voidStarTy, int32Ty, int64Ty ));
+            F.getParent()->getOrInsertFunction("lof_record_arg", record_post_ty ));
+
+    Function* record_double_arg = dyn_cast<Function>(
+            F.getParent()->getOrInsertFunction("lof_double_record_arg", double_record_ty)
+    );
    
     /* lof_postcall records the return value of the function call, records if the return value
      * is a pointer, and then records all changes to pointers */
     Function* postcall = dyn_cast<Function>(
-            F.getParent()->getOrInsertFunction("lof_postcall", voidTy, voidStarTy, int32Ty, int64Ty ));
+            F.getParent()->getOrInsertFunction("lof_postcall", record_post_ty ));
+
+    Function* postcall_double_arg = dyn_cast<Function>(
+            F.getParent()->getOrInsertFunction("lof_double_postcall", double_record_ty)
+            );
 
     assert(precall != nullptr);
     assert(record_arg != nullptr);
@@ -150,36 +163,47 @@ bool LofScribePass::runOnFunction(Function &F) {
         for(unsigned i = ci->getNumArgOperands(); i > 0; i--) {
             Value* arg = ci->getArgOperand(i - 1);
             Value* args[3];
-            args[0] = CreateBitCast(arg, IRB);
-            args[1] = IRB.getInt32(arg->getType()->getTypeID());
+            args[0] = IRB.getInt32(arg->getType()->getTypeID());
             if(PointerType *pt = dyn_cast<PointerType>(arg->getType())) {
-                args[2] = IRB.getInt64(pt->getElementType()->getPrimitiveSizeInBits());
+                args[1] = IRB.getInt64(pt->getElementType()->getPrimitiveSizeInBits());
             } else {
-                args[2] = IRB.getInt64(arg->getType()->getPrimitiveSizeInBits());
+                args[1] = IRB.getInt64(arg->getType()->getPrimitiveSizeInBits());
+            }
+
+            if(arg->getType()->isFloatingPointTy()) {
+                args[2] = IRB.CreateFPCast(arg, doubleTy);
+                IRB.CreateCall(record_double_arg, args);
+            } else {
+                args[2] = CreateBitCast(arg, IRB);
+                IRB.CreateCall(record_arg, args);
             }
 
             /*args[0]->dump();
             args[1]->dump();
             args[2]->dump();*/
-            IRB.CreateCall(record_arg, args);
         }
         BasicBlock::iterator bbit(ci);
         bbit++;
         IRB.SetInsertPoint(&*bbit);
 
         Value* args[3];
-        if(ci->getType()->isVoidTy()) {
-            args[0] = IRB.CreateIntToPtr(IRB.getInt32(0), voidStarTy);
-        } else {
-            args[0] = CreateBitCast(ci, IRB);
-        }
-        args[1] = IRB.getInt32(ci->getType()->getTypeID());
+        args[0] = IRB.getInt32(ci->getType()->getTypeID());
         if(PointerType *pt = dyn_cast<PointerType>(ci->getType())) {
-            args[2] = IRB.getInt64(pt->getElementType()->getPrimitiveSizeInBits());
+            args[1] = IRB.getInt64(pt->getElementType()->getPrimitiveSizeInBits());
         } else {
-            args[2] = IRB.getInt64(ci->getType()->getPrimitiveSizeInBits());
+            args[1] = IRB.getInt64(ci->getType()->getPrimitiveSizeInBits());
         }
-        IRB.CreateCall(postcall, args);
+        if(ci->getType()->isFloatingPointTy()) {
+            args[2] = IRB.CreateFPCast(ci, doubleTy);
+            IRB.CreateCall(postcall_double_arg, args);
+        } else {
+            if(ci->getType()->isVoidTy()) {
+                args[2] = IRB.CreateIntToPtr(IRB.getInt32(0), voidStarTy);
+            } else {
+                args[2] = CreateBitCast(ci, IRB);
+            }
+            IRB.CreateCall(postcall, args);
+        }
     }
 
     return true;
