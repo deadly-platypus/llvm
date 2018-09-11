@@ -19,6 +19,8 @@ public:
     bool runOnFunction(llvm::Function &F) override;
 protected:
     llvm::Value* CreateBitCast(llvm::Value* orig, llvm::IRBuilder<> &IRB);
+    bool isSupported(llvm::CallInst*);
+    bool isSupportedType(llvm::Type *type);
 };
 
 

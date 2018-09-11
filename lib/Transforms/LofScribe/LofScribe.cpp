@@ -24,15 +24,38 @@ using namespace llvm;
 
 LofScribePass::LofScribePass() : FunctionPass(ID) {}
 
+bool LofScribePass::isSupportedType(llvm::Type *type) {
+    if(type->isPointerTy() ||
+            type->isDoubleTy() ||
+            type->isIntegerTy() ||
+            type->isFloatTy() ||
+            type->isX86_FP80Ty()) {
+        return true;
+    }
+
+    return false;
+}
+
+bool LofScribePass::isSupported(llvm::CallInst *ci) {
+    if(isSupportedType(ci->getType())) {
+        for(Value* arg : ci->arg_operands()) {
+            if(!isSupportedType(arg->getType())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
 Value* LofScribePass::CreateBitCast(Value* orig, IRBuilder<> &IRB) {
-    llvm::outs() << "*************\n";
+    /*llvm::outs() << "*************\n";
     orig->dump();
-    llvm::outs() << "*************\n";
+    llvm::outs() << "*************\n";*/
 
     Value* result;
-    if(isa<BitCastInst>(orig)) {
-        result = orig;
-    } else if(orig->getType()->isPointerTy()) {
+    if(orig->getType()->isPointerTy()) {
         result = IRB.CreateBitCast(orig, IRB.getInt8PtrTy());
     } else if(orig->getType()->isFloatTy()) {
         result = IRB.CreateIntToPtr(
@@ -44,9 +67,14 @@ Value* LofScribePass::CreateBitCast(Value* orig, IRBuilder<> &IRB) {
         result = IRB.CreateIntToPtr(
                 IRB.CreateFPToUI(orig, IRB.getInt64Ty()),
                 IRB.getInt8PtrTy());
+    } else if(orig->getType()->isX86_FP80Ty()) {
+        result = IRB.CreateIntToPtr(
+                IRB.CreateFPToUI(orig, IRB.getInt128Ty()),
+                IRB.getInt8PtrTy());
     } else {
-        orig->getType()->dump();
-        llvm::outs() << "*************\n";
+        /*orig->getType()->dump();
+        llvm::outs() << orig->getType()->getTypeID();
+        llvm::outs() << "\n*************\n";*/
         result = IRB.CreatePointerCast(orig, IRB.getInt8PtrTy());
     }
 
@@ -58,12 +86,15 @@ bool LofScribePass::runOnFunction(Function &F) {
             << F.getName() << "\n");
     std::set<CallInst*> callset;
     
-    F.dump();
+//    F.dump();
     
     for(inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         if(CallInst* ci = dyn_cast<CallInst>(&*I)) {
             /* We don't want to instrument functions like llvm.dbg.declare */
             if(ci->getCalledFunction() && ci->getCalledFunction()->isIntrinsic()) {
+                continue;
+            } else if(!isSupported(ci)) {
+                LLVM_DEBUG(dbgs() << "Unsupported function");
                 continue;
             }
             callset.insert(ci);
@@ -127,6 +158,9 @@ bool LofScribePass::runOnFunction(Function &F) {
                 args[2] = IRB.getInt64(arg->getType()->getPrimitiveSizeInBits());
             }
 
+            /*args[0]->dump();
+            args[1]->dump();
+            args[2]->dump();*/
             IRB.CreateCall(record_arg, args);
         }
         BasicBlock::iterator bbit(ci);
