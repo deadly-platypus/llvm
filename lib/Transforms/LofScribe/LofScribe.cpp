@@ -39,6 +39,13 @@ bool LofScribePass::isSupportedType(llvm::Type *type) {
 
 bool LofScribePass::isSupported(llvm::CallInst *ci) {
     if(isSupportedType(ci->getType())) {
+        if(ci->getCalledFunction() && !ci->getCalledFunction()->getName().empty()) {
+            StringRef name = ci->getCalledFunction()->getName();
+            /* We do not support setjmp or longjmp yet */
+            if(name.contains("setjmp") || name.contains("longjmp")) {
+                return false;
+            }
+        }
         for(Value* arg : ci->arg_operands()) {
             if(!isSupportedType(arg->getType())) {
                 return false;
