@@ -29,7 +29,8 @@ bool LofScribePass::isSupportedType(llvm::Type *type) {
             type->isDoubleTy() ||
             type->isIntegerTy() ||
             type->isFloatTy() ||
-            type->isX86_FP80Ty()) {
+            type->isX86_FP80Ty() ||
+            type->isVoidTy()) {
         return true;
     }
 
@@ -83,6 +84,7 @@ bool LofScribePass::runOnFunction(Function &F) {
         if(CallInst* ci = dyn_cast<CallInst>(&*I)) {
             /* We don't want to instrument functions like llvm.dbg.declare */
             if(ci->getCalledFunction() && ci->getCalledFunction()->isIntrinsic()) {
+                LLVM_DEBUG(dbgs() << "Intrinsic function");
                 continue;
             } else if(!isSupported(ci)) {
                 LLVM_DEBUG(dbgs() << "Unsupported function");
@@ -166,7 +168,8 @@ bool LofScribePass::runOnFunction(Function &F) {
             args[0] = IRB.getInt32(arg->getType()->getTypeID());
             if(PointerType *pt = dyn_cast<PointerType>(arg->getType())) {
                 args[1] = IRB.getInt64(pt->getElementType()->getPrimitiveSizeInBits());
-            } else {
+            }
+            else {
                 args[1] = IRB.getInt64(arg->getType()->getPrimitiveSizeInBits());
             }
 
