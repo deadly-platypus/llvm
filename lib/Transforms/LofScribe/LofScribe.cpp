@@ -50,10 +50,6 @@ bool LofScribePass::isSupported(llvm::CallInst *ci) {
 }
 
 Value* LofScribePass::CreateBitCast(Value* orig, IRBuilder<> &IRB) {
-    /*llvm::outs() << "*************\n";
-    orig->dump();
-    llvm::outs() << "*************\n";*/
-
     Value* result;
     if(orig->getType()->isPointerTy()) {
         result = IRB.CreateBitCast(orig, IRB.getInt8PtrTy());
@@ -72,9 +68,6 @@ Value* LofScribePass::CreateBitCast(Value* orig, IRBuilder<> &IRB) {
                 IRB.CreateFPToUI(orig, IRB.getInt128Ty()),
                 IRB.getInt8PtrTy());
     } else {
-        /*orig->getType()->dump();
-        llvm::outs() << orig->getType()->getTypeID();
-        llvm::outs() << "\n*************\n";*/
         result = IRB.CreatePointerCast(orig, IRB.getInt8PtrTy());
     }
 
@@ -85,8 +78,6 @@ bool LofScribePass::runOnFunction(Function &F) {
     LLVM_DEBUG(dbgs() << "Leap of Faith Scribe starting for "
             << F.getName() << "\n");
     std::set<CallInst*> callset;
-    
-//    F.dump();
     
     for(inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
         if(CallInst* ci = dyn_cast<CallInst>(&*I)) {
@@ -157,7 +148,16 @@ bool LofScribePass::runOnFunction(Function &F) {
             LLVM_DEBUG(dbgs() << "Found call to indirect function\n");
         }
 
-        IRB.CreateCall(precall, { CreateBitCast(ci->getCalledValue(), IRB) });
+        if(!ci->getCalledFunction() || ci->getCalledFunction()->getName().empty()) {
+            continue;
+        }
+
+        Constant* name = ConstantDataArray::getString(F.getContext(), ci->getCalledFunction()->getName(), true);
+        Value* stack_name = IRB.CreateAlloca(name->getType());
+        IRB.CreateStore(name, stack_name);
+        Value* name_ptr = IRB.CreateGEP(stack_name, { IRB.getInt32(0), IRB.getInt32(0) });
+
+        IRB.CreateCall(precall, { name_ptr });
 
         /* Reverse order because runtime library uses FIFO stack to store arguments */
         for(unsigned i = ci->getNumArgOperands(); i > 0; i--) {
@@ -177,10 +177,6 @@ bool LofScribePass::runOnFunction(Function &F) {
                 args[2] = CreateBitCast(arg, IRB);
                 IRB.CreateCall(record_arg, args);
             }
-
-            /*args[0]->dump();
-            args[1]->dump();
-            args[2]->dump();*/
         }
         BasicBlock::iterator bbit(ci);
         bbit++;
