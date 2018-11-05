@@ -197,7 +197,7 @@ bool LofScribePass::runOnFunction(Function &F) {
         if(PointerType *pt = dyn_cast<PointerType>(ci->getType())) {
             args[1] = IRB.getInt64(pt->getElementType()->getPrimitiveSizeInBits());
         } else {
-            args[1] = IRB.getInt64(ci->getType()->getPrimitiveSizeInBits());
+            args[1] = IRB.getInt64(ci->getType()->getPrimitiveSizeInBits() / IRB.getInt8Ty()->getPrimitiveSizeInBits());
         }
         if(ci->getType()->isFloatingPointTy()) {
             args[2] = IRB.CreateFPCast(ci, doubleTy);
